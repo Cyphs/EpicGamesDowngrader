@@ -1,12 +1,13 @@
 # Downgrade tool for Hogwarts Legacy
 
-this repository contains a script that is used by epic players to download a older version of among us during times when mods are uncompatible
-with the latest version of the game. The third party tool [legendary](https://github.com/derrod/legendary) is used.
+This repository contains a script that is used by Epic players to download an older version of Hogwarts Legacy, mainly to use the [HogWarp multiplayer mod](https://www.nexusmods.com/hogwartslegacy/mods/1378) during times when the latest version of the game is incompatible. 
+The third party tool [legendary](https://github.com/derrod/legendary) is used.
 
 # Usage
 
 1. [Click here](https://github.com/Cyphs/EpicGamesDowngrader/blob/main/DowngradeEpic.ps1) and then click on the download button to Download raw file.
-
+2. Save the ps1 file to any new folder.
+3. Right-click on it and select "Run with PowerShell" then follow the prompts to login with Epic and download the older version to your game folder.
 
 
 
