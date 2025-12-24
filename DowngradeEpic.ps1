@@ -7,8 +7,38 @@ $ErrorActionPreference = 'Continue'
 
 	Write-Host -BackgroundColor Red "Downloading Legendary, please wait..."
 
-	# Download Legendary (Heroic official build)
+	# Download Legendary (Heroic official build) - try with revocation check first
 	curl.exe -L -o legendary.exe https://github.com/Heroic-Games-Launcher/legendary/releases/latest/download/legendary_windows_x86_64.exe
+
+	# Check if download succeeded (file exists and has content)
+	if (-not (Test-Path ".\legendary.exe") -or (Get-Item ".\legendary.exe").Length -eq 0) {
+		Write-Host -ForegroundColor Yellow "Initial download failed, retrying without TLS revocation checks..."
+		Remove-Item ".\legendary.exe" -ErrorAction SilentlyContinue
+		
+		curl.exe --ssl-no-revoke -L -o legendary.exe https://github.com/Heroic-Games-Launcher/legendary/releases/latest/download/legendary_windows_x86_64.exe
+	}
+
+	# Final check
+	if (-not (Test-Path ".\legendary.exe") -or (Get-Item ".\legendary.exe").Length -eq 0) {
+		Write-Host -ForegroundColor Red "Failed to download Legendary executable."
+		Write-Host -ForegroundColor Red "Possible causes:"
+		Write-Host -ForegroundColor Red "  - Network connectivity issues"
+		Write-Host -ForegroundColor Red "  - Corporate firewall/proxy blocking GitHub"
+		Write-Host -ForegroundColor Red "  - TLS certificate revocation check blocked"
+		Write-Host -ForegroundColor Red "  - HTTPS inspection interfering with downloads"
+		Write-Host ""
+		Write-Host -ForegroundColor Yellow "Try downloading manually from:"
+		Write-Host -ForegroundColor Yellow "https://github.com/Heroic-Games-Launcher/legendary/releases/latest"
+		Write-Host -ForegroundColor Yellow "and place legendary.exe in this folder, then re-run the script."
+		
+		try {
+			Write-Host -ForegroundColor Cyan "Press any key to exit..."
+			$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+		} catch {
+			Read-Host "Press Enter to exit"
+		}
+		exit 1
+	}
 
 	# Download the manifest early so we can use it later (override)
 	$manifestUrl = 'https://github.com/Cyphs/egs-manifests/raw/refs/heads/main/fa4240e57a3c46b39f169041b7811293/manifests/fa4240e57a3c46b39f169041b7811293_Windows_1420267.manifest'
