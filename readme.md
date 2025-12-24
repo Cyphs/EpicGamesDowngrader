@@ -19,3 +19,5 @@ with the latest version of the game. The third party tool [legendary](https://gi
     - write ```Set-ExecutionPolicy Unrestricted -Scope Process``` and click enter <br>
     - write ```./DowngradeEpic.ps1``` and click enter <br>
 2. Make sure your Epic Games account owns Hogwarts Legacy.
+
+Thanks to [whichtwix](https://github.com/whichtwix) for helping and discovering that this is possible and to a user in the Heroic Games Discord which shared the manifest file we needed to downgrade to
