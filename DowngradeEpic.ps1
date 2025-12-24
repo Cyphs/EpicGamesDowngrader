@@ -1,4 +1,4 @@
-# This script downgrades the Epic Games version to the previous live one using the 3rd party client Legendary
+# This script downgrades the Epic Games version to a previous version using the 3rd party client Legendary
 # 1. Download Legendary
 # 2. Install with the provided manifest
 # 3. Optionally update a registry key for HogWarp
@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Continue'
 
 	Write-Host -BackgroundColor Red "Downloading Legendary, please wait..."
 
-	# Download Legendary (Heroic official build) - try with revocation check first
+	# Download Legendary (Heroic Games Launcher fork) - try with revocation check first
 	curl.exe -L -o legendary.exe https://github.com/Heroic-Games-Launcher/legendary/releases/latest/download/legendary_windows_x86_64.exe
 
 	# Check if download succeeded (file exists and has content)
