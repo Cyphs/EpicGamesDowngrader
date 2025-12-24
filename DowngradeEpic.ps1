@@ -1,40 +1,172 @@
-# This scripts downgrades the Epic Games version to the previous live one using the 3rd party client Legendary
+# This script downgrades the Epic Games version to the previous live one using the 3rd party client Legendary
 # 1. Download Legendary
 # 2. Install with the provided manifest
-# 3. Create a small launch script for the game
+# 3. Optionally update a registry key for HogWarp
 
-Write-Host -BackgroundColor red "Downloading Legendary, please wait..."
+$ErrorActionPreference = 'Continue'
 
-# Download Legendary
-curl.exe -LO https://github.com/whichtwix/legendary/releases/latest/download/legendary.exe
+	Write-Host -BackgroundColor Red "Downloading Legendary, please wait..."
 
-# This gives Legendary access to the Epic account, this is needed to download the game
-.\legendary auth --import
+	# Download Legendary (Heroic official build)
+	curl.exe -L -o legendary.exe https://github.com/Heroic-Games-Launcher/legendary/releases/latest/download/legendary_windows_x86_64.exe
 
-# we have to do this first so the base url can populate as even putting it as a argument later is not enough
-.\legendary install 963137e4c29d4c79a81323b8fab03a40 --abort-if-any-installed
+	# Download the manifest early so we can use it later (override)
+	$manifestUrl = 'https://github.com/Cyphs/egs-manifests/raw/refs/heads/main/fa4240e57a3c46b39f169041b7811293/manifests/fa4240e57a3c46b39f169041b7811293_Windows_1420267.manifest'
+	if (-not (Test-Path .\hogwarp.manifest)) {
+		Write-Host "Downloading manifest..."
+		Invoke-WebRequest -Uri $manifestUrl -UseBasicParsing -OutFile hogwarp.manifest
+	}
 
-Invoke-WebRequest -Uri https://github.com/whichtwix/Data/raw/master/epic/manifests/963137e4c29d4c79a81323b8fab03a40_2025.9.9.manifest -UseBasicParsing -OutFile auman.manifest
+	# Check whether Legendary already has saved credentials; prefer parsing JSON output from `status`
+	$statusJson = & .\legendary status --json 2>$null
+	$loggedIn = $false
+	if ($statusJson) {
+		try {
+			$statusObj = $statusJson | ConvertFrom-Json -ErrorAction Stop
+			if ($null -ne $statusObj) {
+				if ($statusObj.PSObject.Properties.Name -contains 'logged_in') {
+					$loggedIn = [bool]$statusObj.logged_in
+				} elseif ($statusObj.PSObject.Properties.Name -contains 'username') {
+					$loggedIn = -not [string]::IsNullOrEmpty($statusObj.username)
+				}
+			}
+		} catch {
+			# parsing failed; treat as not logged in
+			$loggedIn = $false
+		}
+	}
 
-.\legendary install 963137e4c29d4c79a81323b8fab03a40 --manifest auman.manifest -y
+	if (-not $loggedIn) {
+		Write-Host -BackgroundColor Yellow "No saved Legendary credentials detected - launching interactive login (system browser)..."
+		& .\legendary auth --disable-webview
+		if ($LASTEXITCODE -ne 0) {
+			Write-Host -ForegroundColor Red "Legendary login failed. Aborting."
+			exit 1
+		}
+	}
 
-Write-Host "done"
-Write-Host  -BackgroundColor red "Attempting to access the new Among Us folder through file explorer"
-Write-Host  -BackgroundColor red "if not found, please find it manually at C:\users\you\games\among us or similar"
+	# After folder selection, we'll prime CDN metadata, then run the manifest-based install into the chosen folder.
 
-Set-Location -Path (Get-Item -Path $env:USERPROFILE)
-explorer.exe Games\AmongUs
+	Write-Host "done"
+	Write-Host -BackgroundColor Red "Select a folder to download Hogwarts Legacy to."
 
-Write-Host  -BackgroundColor red "making a quick start file in the among us folder, click this to start the game"
-Write-Host  -BackgroundColor red "it will be named EpicGamesStarter.exe"
-if (!(Test-Path "Games\AmongUs\EpicGamesStarter.exe")) 
-{
-    Invoke-WebRequest -Uri https://github.com/whichtwix/EpicGamesStarter/releases/download/1.0.2/EpicGamesStarter.exe.zip -UseBasicParsing -OutFile Games\AmongUs\EpicGamesStarter.exe.zip
-}
-if (Test-Path "Games\AmongUs\EpicGamesStarter.exe.zip") 
-{
-    Expand-Archive -Path "Games\AmongUs\EpicGamesStarter.exe.zip" -DestinationPath "Games\AmongUs" -Force
-    Remove-Item "Games\AmongUs\EpicGamesStarter.exe.zip"
-}
+	# Prompt the user to select the game folder (GUI)
+	Add-Type -AssemblyName System.Windows.Forms
+	$folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+	$folderDialog.Description = "Select a download folder"
+	$folderDialog.ShowNewFolderButton = $true
+	if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+		$GameFolder = $folderDialog.SelectedPath
+	} else {
+		Write-Host -ForegroundColor Red "No folder selected - aborting script."
+		exit 1
+	}
 
-Read-Host
+	# If user selected the HogwartsLegacy folder itself, use its parent as the base path
+	if ($GameFolder -like "*HogwartsLegacy" -or (Split-Path -Leaf $GameFolder) -eq "HogwartsLegacy") {
+		$GameFolder = Split-Path -Parent $GameFolder
+		Write-Host -ForegroundColor Yellow "Detected HogwartsLegacy folder selection - using parent folder as base path."
+	}
+
+	Write-Host -ForegroundColor Green "Opening: $GameFolder"
+	explorer.exe "$GameFolder"
+
+	# Before installing, check if the app is already installed (idempotent)
+	$alreadyInstalled = $false
+	$installedJson = & .\legendary list-installed --json 2>&1
+	if ($LASTEXITCODE -ne 0) {
+		# treat as no installed apps found
+		$installedJson = $null
+	}
+	if ($installedJson) {
+		try {
+			$installed = $installedJson | ConvertFrom-Json -ErrorAction Stop
+			foreach ($item in $installed) {
+				$idCandidates = @($item.app, $item.app_name, $item.name)
+				if ($idCandidates -contains 'fa4240e57a3c46b39f169041b7811293') { $alreadyInstalled = $true; break }
+			}
+		} catch { }
+	}
+
+	if ($alreadyInstalled) {
+		Write-Host -ForegroundColor Green "App already installed according to Legendary. You can re-run install to resume if needed."
+	} else {
+		# Prime CDN metadata by running a non-manifest install first, as the original flow did
+		Write-Host -ForegroundColor Cyan "Priming CDN metadata (no files will be downloaded)..."
+		# Run an analysis-only install to populate CDN metadata without downloading any files (stream output)
+		& .\legendary install fa4240e57a3c46b39f169041b7811293 --abort-if-any-installed --base-path "$GameFolder" --download-only --prefix "__NO_MATCH__" -y
+		if ($LASTEXITCODE -ne 0) {
+			Write-Host -ForegroundColor Yellow "Priming step returned code $LASTEXITCODE. Continuing to manifest install."
+		}
+
+		Write-Host -ForegroundColor Cyan "Installing using manifest under base path: $GameFolder (progress will be shown)"
+		# Install under the selected base path (Legendary will create the subfolder), stream output for progress
+		& .\legendary install fa4240e57a3c46b39f169041b7811293 --manifest hogwarp.manifest --base-path "$GameFolder" -y
+		if ($LASTEXITCODE -ne 0) {
+			Write-Host -ForegroundColor Red "Legendary install exited with code $LASTEXITCODE."
+		}
+	}
+
+	# Offer to update HogWarp registry entries for Hogwarts Legacy
+	$updateReg = Read-Host "Update HogWarp path in the registry for Hogwarts Legacy with this folder? (Y/N)"
+	if ($updateReg -match '^[Yy]') {
+		# Use the expected HogwartsLegacy install layout under the chosen base path
+		$expectedExeDir = Join-Path $GameFolder 'HogwartsLegacy\Phoenix\Binaries\Win64'
+		$expectedExePath = Join-Path $expectedExeDir 'HogwartsLegacy.exe'
+		if (-not (Test-Path $expectedExePath)) {
+			Write-Host -ForegroundColor Yellow "Expected executable not found yet at $expectedExePath. Setting registry values anyway."
+		}
+		$regPath = 'HKCU:\Software\TiltedPhoques\WarpSpeed\Hogwarts Legacy'
+		New-Item -Path $regPath -Force | Out-Null
+		New-ItemProperty -Path $regPath -Name 'TitleExe' -Value $expectedExePath -PropertyType String -Force | Out-Null
+		New-ItemProperty -Path $regPath -Name 'TitlePath' -Value $expectedExeDir -PropertyType String -Force | Out-Null
+		Write-Host -ForegroundColor Green "Registry updated:"
+		Write-Host -ForegroundColor Green "TitleExe = $expectedExePath"
+		Write-Host -ForegroundColor Green "TitlePath = $expectedExeDir"
+	}
+
+	# Copy Epic (no-space) saves to Steam-style (space) saves for HogWarp
+	Write-Host -BackgroundColor Red "Syncing Epic saves to HogWarp location..."
+	$srcBase = Join-Path $env:LOCALAPPDATA 'HogwartsLegacy\Saved\SaveGames'
+	$destBase = Join-Path $env:LOCALAPPDATA 'Hogwarts Legacy\Saved\SaveGames'
+
+	if (-not (Test-Path $srcBase)) {
+		Write-Host -ForegroundColor Yellow "Source saves folder not found: $srcBase"
+	} else {
+		# Find the 32-character user folder (pick most recently modified if multiple)
+		$subDirs = Get-ChildItem -Path $srcBase -Directory -ErrorAction SilentlyContinue
+		$matchDirs = $subDirs | Where-Object { $_.Name -match '^[0-9A-Za-z]{32}$' } | Sort-Object LastWriteTime -Descending
+		$srcUserDir = $null
+		if ($matchDirs -and $matchDirs.Count -gt 0) { $srcUserDir = $matchDirs[0].FullName }
+		elseif ($subDirs -and $subDirs.Count -gt 0) { $srcUserDir = $subDirs[0].FullName }
+
+		if (-not $srcUserDir) {
+			Write-Host -ForegroundColor Yellow "No save subfolder found under: $srcBase"
+		} else {
+			# Ensure destination exists
+			New-Item -ItemType Directory -Path $destBase -Force | Out-Null
+			# Copy all .sav files except SaveGameList.sav, overwriting if present
+			$savFiles = Get-ChildItem -Path $srcUserDir -Filter *.sav -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'SaveGameList.sav' }
+			foreach ($f in $savFiles) {
+				Copy-Item -Path $f.FullName -Destination (Join-Path $destBase $f.Name) -Force
+			}
+			# Delete SaveGameList.sav in destination if present
+			$destList = Join-Path $destBase 'SaveGameList.sav'
+			if (Test-Path $destList) {
+				Remove-Item $destList -Force -ErrorAction SilentlyContinue
+				Write-Host -ForegroundColor Yellow "Removed stale SaveGameList.sav in destination."
+			}
+			Write-Host -ForegroundColor Green "Saved files synced to: $destBase"
+		}
+	}
+
+	# Pause so the window doesn't close immediately
+	try {
+		Write-Host -ForegroundColor Cyan "Press any key to exit..."
+		$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+	} catch {
+		# Fallback for hosts without RawUI
+		Read-Host "Press Enter to exit"
+	}
+
+	# End of script
