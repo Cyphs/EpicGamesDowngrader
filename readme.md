@@ -18,7 +18,9 @@ Video here if needed: https://www.youtube.com/watch?v=c_4zX11z8d4
 
 # Common issues
 
-1. The script may instantly close due to execution-policy blocking or antivirus software.
+1. Try moving the ps1 file to a different location.
+
+2. The script may instantly close due to execution-policy blocking or antivirus software.
    <br> Solution:
     - Search powershell in your windows search bar and open it <br>
     - Navigate to the folder the script is in, by doing for example: ```cd downloads``` or ```cd desktop``` <br>
@@ -26,7 +28,8 @@ Video here if needed: https://www.youtube.com/watch?v=c_4zX11z8d4
     - Type ```powershell -NoProfile -ExecutionPolicy Bypass -File .\DowngradeEpic.ps1``` and press Enter <br>
 
     
-2. Make sure your Epic Games account owns Hogwarts Legacy.
+3. Make sure your Epic Games account owns Hogwarts Legacy.
+
 
 Thanks to [whichtwix](https://github.com/whichtwix) for helping and discovering that this is possible and to a user in the Heroic Games Discord which shared the manifest file we needed for downgrading.
 
